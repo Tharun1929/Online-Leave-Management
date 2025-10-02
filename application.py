@@ -1,22 +1,25 @@
 from flask import Flask, render_template, url_for, request, redirect, flash, session
-from flask_mysqldb import MySQL
+import pymysql
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
-import pymysql
-pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 
-# Configure database - using environment variables for security
-app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'localhost')
-app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'root')
-app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', '')
-app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'college')
+# Database configuration - using environment variables for security
+db_config = {
+    'host': os.environ.get('MYSQL_HOST', 'localhost'),
+    'user': os.environ.get('MYSQL_USER', 'root'),
+    'password': os.environ.get('MYSQL_PASSWORD', ''),
+    'database': os.environ.get('MYSQL_DB', 'college'),
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor
+}
 
-mysql = MySQL(app)
+def get_db_connection():
+    return pymysql.connect(**db_config)
 
 # Email configuration - using environment variables for security
 psswd = os.environ.get('EMAIL_PASSWORD', '')
@@ -32,13 +35,15 @@ def index():
 def login():
     try:
         if request.method == 'POST':
-            cursor = mysql.connection.cursor()
+            connection = get_db_connection()
+            cursor = connection.cursor()
             id_num = request.form['id_num']
             password = request.form['password']
             cursor.execute("SELECT * FROM student_details WHERE id_num=%s", (id_num,))
             data = cursor.fetchone()
             cursor.close()
-            if data and data[4] == password:
+            connection.close()
+            if data and data['password'] == password:
                 session['user'] = {'type': 'student', 'id_num': id_num, 'data': data}
                 return render_template("user_dashboard.html", student=[data])
             else:
@@ -53,20 +58,23 @@ def login():
 def faculty_login():
     try:
         if request.method == 'POST':
-            cursor = mysql.connection.cursor()
+            connection = get_db_connection()
+            cursor = connection.cursor()
             id_num = request.form['id_num']
             password = request.form['password']
             cursor.execute("SELECT * FROM faculty WHERE id_num=%s AND hod='n'", (id_num,))
             data = cursor.fetchone()
-            if data and data[4] == password:
+            if data and data['password'] == password:
                 session['user'] = {'type': 'faculty', 'id_num': id_num, 'data': data}
                 cursor.execute("SELECT num, id_num, from_date, to_date, reason, status FROM leave_application WHERE status='c' ORDER BY num DESC")
                 applications = cursor.fetchall()
                 cursor.close()
+                connection.close()
                 return render_template("admin_dashboard.html", faculty=[data], applications=applications)
             else:
                 flash("Invalid faculty credentials!")
                 cursor.close()
+                connection.close()
                 return render_template("faculty_login.html")
         return render_template("faculty_login.html")
     except Exception as e:
@@ -78,20 +86,23 @@ def faculty_login():
 def hod_login():
     try:
         if request.method == 'POST':
-            cursor = mysql.connection.cursor()
+            connection = get_db_connection()
+            cursor = connection.cursor()
             id_num = request.form['id_num']
             password = request.form['password']
             cursor.execute("SELECT * FROM faculty WHERE id_num=%s AND hod='y'", (id_num,))
             data = cursor.fetchone()
-            if data and data[4] == password:
+            if data and data['password'] == password:
                 session['user'] = {'type': 'hod', 'id_num': id_num, 'data': data}
                 cursor.execute("SELECT num, id_num, from_date, to_date, reason, status FROM leave_application WHERE status='c' OR status='b' ORDER BY num DESC")
                 applications = cursor.fetchall()
                 cursor.close()
+                connection.close()
                 return render_template("admin_dashboard.html", faculty=[data], applications=applications)
             else:
                 flash("Invalid HoD credentials!")
                 cursor.close()
+                connection.close()
                 return render_template("hod_login.html")
         return render_template("hod_login.html")
     except Exception as e:
@@ -114,15 +125,17 @@ def register():
         if len(id_num) > 7 or len(name) > 20 or len(email) > 50 or len(phone) > 10:
             flash("Input exceeds maximum length!")
             return render_template("index.html", data=[id_num, name, email, phone, password], error="invalid_input")
-        cursor = mysql.connection.cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         try:
             cursor.execute("INSERT INTO student_details VALUES (%s, %s, %s, %s, %s)", (id_num, name, email, phone, password))
-            mysql.connection.commit()
+            connection.commit()
             flash("Registration successful! Please log in.")
         except Exception as e:
             flash(f"Registration failed: {str(e)}")
         finally:
             cursor.close()
+            connection.close()
         return redirect(url_for('index'))
 
 # Password reset function
@@ -138,18 +151,21 @@ def reset():
         if password != conf_password:
             flash("Unmatched passwords!")
             return render_template("index.html", error="umatched_password1")
-        cursor = mysql.connection.cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         cursor.execute("SELECT * FROM student_details WHERE id_num=%s AND name=%s AND email=%s AND phone=%s", (id_num, name, email, phone))
         data = cursor.fetchone()
         if data:
             cursor.execute('UPDATE student_details SET password=%s WHERE id_num=%s', (password, id_num))
-            mysql.connection.commit()
+            connection.commit()
             flash("Reset successful!")
             cursor.close()
+            connection.close()
             return render_template('index.html')
         else:
             flash("Unmatched details!")
             cursor.close()
+            connection.close()
             return render_template('index.html', error="unmatched")
 
 # Leave application function

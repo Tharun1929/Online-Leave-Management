@@ -10,9 +10,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-product
 
 # Database configuration - using environment variables for security
 db_config = {
-    'host': os.environ.get('MYSQL_HOST', 'localhost'),
-    'user': os.environ.get('MYSQL_USER', 'root'),
-    'password': os.environ.get('MYSQL_PASSWORD', ''),
+    'host': os.environ.get('MYSQLHOST', 'localhost'),
+    'user': os.environ.get('MYSQLUSER', 'root'),
+    'password': os.environ.get('MYSQLPASSWORD', ''),
     'database': os.environ.get('MYSQL_DB', 'college'),
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
